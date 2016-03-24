@@ -40,11 +40,33 @@ pub struct Workspace {
     pub rect: Rect,
 }
 
+impl Rect {
+    pub fn new(x: f32, y: f32, width: f32, height: f32) -> Rect {
+        Rect {
+            x: x,
+            y: y,
+            width: width,
+            height: height
+        }
+    }
+}
 
 impl Workspace {
     pub fn new(rect: Rect) -> Result<Workspace> {
+        if rect.x < 0.0 {
+            return Err(Error::IllegalSize("x has to be non-negative".to_owned()));
+        }
+
         if rect.y < 0.0 {
             return Err(Error::IllegalSize("y has to be non-negative".to_owned()));
+        }
+
+        if rect.width <= 0.0 {
+            return Err(Error::IllegalSize("width has to be larger than 0.0".to_owned()));
+        }
+
+        if rect.height <= 0.0 {
+            return Err(Error::IllegalSize("height has to be larger than 0.0".to_owned()));
         }
 
         Ok(Workspace {
@@ -56,7 +78,40 @@ impl Workspace {
 
 #[cfg(test)]
 mod test {
+    use {Workspace, Rect};
+
     #[test]
-    fn it_works() {
+    fn test_validate_x_less_than_zero() {
+        assert_eq!(Workspace::new(Rect::new(-0.1, 0.0, 1.0, 1.0)).is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_y_less_than_zero() {
+        assert_eq!(Workspace::new(Rect::new(0.0, -0.1, 1.0, 1.0)).is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_width_zero() {
+        assert_eq!(Workspace::new(Rect::new(0.0, 0.0, 0.0, 1.0)).is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_height_zero() {
+        assert_eq!(Workspace::new(Rect::new(0.0, 0.0, 1.0, 0.0)).is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_width_less_than_zero() {
+        assert_eq!(Workspace::new(Rect::new(0.0, 0.0, -1.0, 0.0)).is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_height_less_than_zero() {
+        assert_eq!(Workspace::new(Rect::new(0.0, 0.0, 0.0, -1.0)).is_err(), true);
+    }
+
+    #[test]
+    fn test_validate_workspace_ok() {
+        assert_eq!(Workspace::new(Rect::new(0.0, 0.0, 1024.0, 1024.0)).is_ok(), true);
     }
 }
