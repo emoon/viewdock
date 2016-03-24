@@ -12,6 +12,17 @@ pub struct Rect {
     pub height: f32,
 }
 
+impl Rect {
+    pub fn new(x: f32, y: f32, width: f32, height: f32) -> Rect {
+        Rect {
+            x: x,
+            y: y,
+            width: width,
+            height: height
+        }
+    }
+}
+
 pub struct View {
     pub handle: ViewHandle,
     pub rect: Rect
@@ -20,6 +31,7 @@ pub struct View {
 pub enum Direction {
     Vertical,
     Horizontal,
+    Full,
 }
 
 pub struct Container {
@@ -35,23 +47,12 @@ pub struct Split {
 }
 
 pub struct Workspace {
-    pub split: Option<Split>,
-    pub view: Option<View>,
+    pub split: Option<Box<Split>>,
     pub rect: Rect,
 }
 
-impl Rect {
-    pub fn new(x: f32, y: f32, width: f32, height: f32) -> Rect {
-        Rect {
-            x: x,
-            y: y,
-            width: width,
-            height: height
-        }
-    }
-}
-
 impl Workspace {
+    /// Construct a new workspace. The rect has to be y >= 0, x >= 0, width > 0 and height > 0
     pub fn new(rect: Rect) -> Result<Workspace> {
         if rect.x < 0.0 {
             return Err(Error::IllegalSize("x has to be non-negative".to_owned()));
@@ -71,7 +72,6 @@ impl Workspace {
 
         Ok(Workspace {
             split: None,
-            view: None,
             rect: rect })
     }
 }
