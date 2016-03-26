@@ -6,7 +6,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Clone, Copy)]
 pub struct ViewHandle(u64);
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Copy)]
 pub struct Rect {
     pub x: f32,
     pub y: f32,
@@ -40,6 +40,7 @@ impl View {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum Direction {
     Vertical,
     Horizontal,
@@ -78,7 +79,9 @@ impl Split {
         }
     }
 
-    pub fn no_split(&mut self, view_handle: ViewHandle) -> bool {
+    pub fn no_split(&mut self, direction: Direction, view_handle: ViewHandle) -> bool {
+        self.direction = direction;
+
         if self.left_views.views.len() == 0 {
             self.left_views.views.push(View::new(view_handle));
             self.ratio = 0.5;
@@ -95,7 +98,7 @@ impl Split {
     }
 
     pub fn split_left(&mut self, view_handle: ViewHandle, direction: Direction) {
-        if Self::no_split(self, view_handle) { 
+        if Self::no_split(self, direction, view_handle) { 
             return; 
         } else {
             let mut split = Box::new(Split::new(direction));
@@ -120,7 +123,7 @@ impl Split {
     }
 
     pub fn split_right(&mut self, view_handle: ViewHandle, direction: Direction) {
-        if Self::no_split(self, view_handle) { 
+        if Self::no_split(self, direction, view_handle) { 
             return; 
         } else {
             let mut split = Box::new(Split::new(direction));
@@ -185,19 +188,8 @@ impl Workspace {
     pub fn calc_horizontal_sizing(rect: Rect, ratio: f32) -> (Rect, Rect) {
         let h = rect.height * ratio;
 
-        let rect_top = Rect {
-            x: rect.x,
-            y: rect.y,
-            width: rect.width, 
-            height: h, 
-        };
-
-        let rect_bottom = Rect {
-            x: rect.x,
-            y: rect.y + h,
-            width: rect.width, 
-            height: rect.height - h, 
-        };
+        let rect_top = Rect::new(rect.x, rect.y, rect.width, h);
+        let rect_bottom = Rect::new(rect.x, rect.y + h, rect.width, rect.height - h);
 
         (rect_top, rect_bottom)
     }
@@ -205,43 +197,55 @@ impl Workspace {
     pub fn calc_vertical_sizing(rect: Rect, ratio: f32) -> (Rect, Rect) {
         let w = rect.width * ratio;
 
-        let rect_left = Rect {
-            x: rect.x,
-            y: rect.y,
-            width: w, 
-            height: rect.height, 
-        };
-
-        let rect_right = Rect {
-            x: rect.x + w,
-            y: rect.y,
-            width: rect.width - w, 
-            height: rect.height, 
-        };
+        let rect_left = Rect::new(rect.x, rect.y, w, rect.height);
+        let rect_right = Rect::new(rect.x + w, rect.y, rect.width - w, rect.height);
 
         (rect_left, rect_right)
     }
 
-    fn recursive_update(&mut self, _rect: Rect, _level: usize) {
-        // update the size on this level
+    fn recursive_update(current_split: &mut Split, rect: Rect, level: usize) {
+        let rects = match current_split.direction {
+            Direction::Vertical => Self::calc_vertical_sizing(rect, current_split.ratio),
+            Direction::Horizontal => Self::calc_horizontal_sizing(rect, current_split.ratio),
+            Direction::Full => (rect, rect),
+        };
 
-        /*
-        match self.direction {
-            Direction::Vertical => {
-
-            }
-
-            Direction::Horizontal => {
-
-            }
+        if let Some(ref mut split) = current_split.left {
+            Self::recursive_update(split, rects.0, level + 1);
         }
-        */
+
+        if let Some(ref mut split) = current_split.right {
+            Self::recursive_update(split, rects.1, level + 1);
+        }
+
+        for view in &mut current_split.left_views.views {
+            println!("level {} left  - x: {} y: {} w: {} h: {}", level, rects.0.x, rects.0.y, rects.0.width, rects.0.height);
+            view.rect = rects.0;
+        }
+
+        for view in &mut current_split.right_views.views {
+            println!("level {} right - x: {} y: {} w: {} h: {}", level, rects.1.x, rects.1.y, rects.1.width, rects.1.height);
+            view.rect = rects.1;
+        }
     }
 
     pub fn update(&mut self) {
         let rect = self.rect.clone();
-        Self::recursive_update(self, rect, 0);
+        if let Some(ref mut split) = self.split {
+            Self::recursive_update(split, rect, 0);
+        }
     }
+
+    /*
+    fn split_view_handle_recursive(&mut self, direction: Direction, view_handle: ViewHandle) {
+    }
+
+    pub fn split_by_view_handle(&mut self) {
+        if let Some(ref mut split) = self.split {
+            Self::split_view_handle_recursive(split, rect, 0);
+        }
+    }
+    */
 }
 
 #[cfg(test)]
@@ -304,12 +308,16 @@ mod test {
         ws.split_top(ViewHandle(1), Direction::Vertical);
         ws.split_top(ViewHandle(2), Direction::Vertical);
 
+        //ws.update();
+        //assert_eq!(1, 0);
+
         assert_eq!(ws.split.is_some(), true);
         let split = ws.split.unwrap();
 
         assert_eq!(split.right_views.views.len(), 1);
         assert_eq!(split.left_views.views.len(), 1);
         assert_eq!(check_range(split.ratio, 0.5, 0.01), true);
+
     }
 
     #[test]
