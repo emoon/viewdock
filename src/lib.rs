@@ -4,7 +4,7 @@ pub use self::error::Error;
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(Clone, Copy)]
-pub struct ViewHandle(u64);
+pub struct ViewHandle(pub u64);
 
 #[derive(Default, Clone, Copy)]
 pub struct Rect {
@@ -104,33 +104,23 @@ impl Split {
             let mut split = Box::new(Split::new(direction));
             split.right_views = self.left_views.clone();
             split.left_views.views.push(View::new(view_handle));
+            split.ratio = 0.5;
             self.left = Some(split);
-            self.right_views.views.clear();
+            self.left_views.views.clear();
         }
-
-
-
-        /*
-        // this case only happens when a view happen to be fullscreen
-        if self.left_top.len() == 1 && self.right_bottom.len() == 0 {
-            self.direction = direction;
-            self.ratio = 0.5;
-            self.right_bottom.push(View::new(view_handle));
-        } else {
-
-        }
-        */
     }
 
     pub fn split_right(&mut self, view_handle: ViewHandle, direction: Direction) {
         if Self::no_split(self, direction, view_handle) { 
             return; 
         } else {
+            println!("Create new split");
             let mut split = Box::new(Split::new(direction));
             split.left_views = self.right_views.clone();
             split.right_views.views.push(View::new(view_handle));
+            split.ratio = 0.5;
             self.right = Some(split);
-            self.left_views.views.clear();
+            self.right_views.views.clear();
         }
     }
 
@@ -168,13 +158,41 @@ impl Split {
         }
 
         for view in &mut self.left_views.views {
-            println!("level {} left  - x: {} y: {} w: {} h: {}", level, rects.0.x, rects.0.y, rects.0.width, rects.0.height);
+            //println!("level {} left  - x: {} y: {} w: {} h: {}", level, rects.0.x, rects.0.y, rects.0.width, rects.0.height);
             view.rect = rects.0;
         }
 
         for view in &mut self.right_views.views {
-            println!("level {} right - x: {} y: {} w: {} h: {}", level, rects.1.x, rects.1.y, rects.1.width, rects.1.height);
+            //println!("level {} right - x: {} y: {} w: {} h: {}", level, rects.1.x, rects.1.y, rects.1.width, rects.1.height);
             view.rect = rects.1;
+        }
+    }
+
+    pub fn split_by_view_handle(&mut self, direction: Direction, find_handle: ViewHandle, handle: ViewHandle) {
+        // TODO: Fix me
+        let left_views = self.left_views.views.clone();
+        let right_views = self.right_views.views.clone();
+
+        for view in left_views {
+            if view.handle.0 == find_handle.0 {
+                self.split_left(handle, direction);
+                return;
+            }
+        }
+
+        for view in right_views {
+            if view.handle.0 == find_handle.0 {
+                self.split_right(handle, direction);
+                return;
+            }
+        }
+
+        if let Some(ref mut split) = self.left {
+            Self::split_by_view_handle(split, direction, find_handle, handle); 
+        }
+
+        if let Some(ref mut split) = self.right {
+            Self::split_by_view_handle(split, direction, find_handle, handle); 
         }
     }
 
@@ -230,7 +248,6 @@ impl Workspace {
         }
     }
 
-
     pub fn update(&mut self) {
         let rect = self.rect.clone();
         if let Some(ref mut split) = self.split {
@@ -238,16 +255,11 @@ impl Workspace {
         }
     }
 
-    /*
-    fn split_view_handle_recursive(&mut self, direction: Direction, view_handle: ViewHandle) {
-    }
-
-    pub fn split_by_view_handle(&mut self) {
+    pub fn split_by_view_handle(&mut self, direction: Direction, find_handle: ViewHandle, handle: ViewHandle) {
         if let Some(ref mut split) = self.split {
-            Self::split_view_handle_recursive(split, rect, 0);
+            split.split_by_view_handle(direction, find_handle, handle);
         }
     }
-    */
 }
 
 #[cfg(test)]
@@ -310,16 +322,12 @@ mod test {
         ws.split_top(ViewHandle(1), Direction::Vertical);
         ws.split_top(ViewHandle(2), Direction::Vertical);
 
-        //ws.update();
-        //assert_eq!(1, 0);
-
         assert_eq!(ws.split.is_some(), true);
         let split = ws.split.unwrap();
 
         assert_eq!(split.right_views.views.len(), 1);
         assert_eq!(split.left_views.views.len(), 1);
         assert_eq!(check_range(split.ratio, 0.5, 0.01), true);
-
     }
 
     #[test]
