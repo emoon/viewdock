@@ -133,6 +133,51 @@ impl Split {
             self.left_views.views.clear();
         }
     }
+
+    pub fn calc_horizontal_sizing(rect: Rect, ratio: f32) -> (Rect, Rect) {
+        let h = rect.height * ratio;
+
+        let rect_top = Rect::new(rect.x, rect.y, rect.width, h);
+        let rect_bottom = Rect::new(rect.x, rect.y + h, rect.width, rect.height - h);
+
+        (rect_top, rect_bottom)
+    }
+
+    pub fn calc_vertical_sizing(rect: Rect, ratio: f32) -> (Rect, Rect) {
+        let w = rect.width * ratio;
+
+        let rect_left = Rect::new(rect.x, rect.y, w, rect.height);
+        let rect_right = Rect::new(rect.x + w, rect.y, rect.width - w, rect.height);
+
+        (rect_left, rect_right)
+    }
+
+    fn recursive_update(&mut self, rect: Rect, level: usize) {
+        let rects = match self.direction {
+            Direction::Vertical => Self::calc_vertical_sizing(rect, self.ratio),
+            Direction::Horizontal => Self::calc_horizontal_sizing(rect, self.ratio),
+            Direction::Full => (rect, rect),
+        };
+
+        if let Some(ref mut split) = self.left {
+            Self::recursive_update(split, rects.0, level + 1);
+        }
+
+        if let Some(ref mut split) = self.right {
+            Self::recursive_update(split, rects.1, level + 1);
+        }
+
+        for view in &mut self.left_views.views {
+            println!("level {} left  - x: {} y: {} w: {} h: {}", level, rects.0.x, rects.0.y, rects.0.width, rects.0.height);
+            view.rect = rects.0;
+        }
+
+        for view in &mut self.right_views.views {
+            println!("level {} right - x: {} y: {} w: {} h: {}", level, rects.1.x, rects.1.y, rects.1.width, rects.1.height);
+            view.rect = rects.1;
+        }
+    }
+
 }
 
 pub struct Workspace {
@@ -185,54 +230,11 @@ impl Workspace {
         }
     }
 
-    pub fn calc_horizontal_sizing(rect: Rect, ratio: f32) -> (Rect, Rect) {
-        let h = rect.height * ratio;
-
-        let rect_top = Rect::new(rect.x, rect.y, rect.width, h);
-        let rect_bottom = Rect::new(rect.x, rect.y + h, rect.width, rect.height - h);
-
-        (rect_top, rect_bottom)
-    }
-
-    pub fn calc_vertical_sizing(rect: Rect, ratio: f32) -> (Rect, Rect) {
-        let w = rect.width * ratio;
-
-        let rect_left = Rect::new(rect.x, rect.y, w, rect.height);
-        let rect_right = Rect::new(rect.x + w, rect.y, rect.width - w, rect.height);
-
-        (rect_left, rect_right)
-    }
-
-    fn recursive_update(current_split: &mut Split, rect: Rect, level: usize) {
-        let rects = match current_split.direction {
-            Direction::Vertical => Self::calc_vertical_sizing(rect, current_split.ratio),
-            Direction::Horizontal => Self::calc_horizontal_sizing(rect, current_split.ratio),
-            Direction::Full => (rect, rect),
-        };
-
-        if let Some(ref mut split) = current_split.left {
-            Self::recursive_update(split, rects.0, level + 1);
-        }
-
-        if let Some(ref mut split) = current_split.right {
-            Self::recursive_update(split, rects.1, level + 1);
-        }
-
-        for view in &mut current_split.left_views.views {
-            println!("level {} left  - x: {} y: {} w: {} h: {}", level, rects.0.x, rects.0.y, rects.0.width, rects.0.height);
-            view.rect = rects.0;
-        }
-
-        for view in &mut current_split.right_views.views {
-            println!("level {} right - x: {} y: {} w: {} h: {}", level, rects.1.x, rects.1.y, rects.1.width, rects.1.height);
-            view.rect = rects.1;
-        }
-    }
 
     pub fn update(&mut self) {
         let rect = self.rect.clone();
         if let Some(ref mut split) = self.split {
-            Self::recursive_update(split, rect, 0);
+            split.recursive_update(rect, 0);
         }
     }
 
@@ -250,7 +252,7 @@ impl Workspace {
 
 #[cfg(test)]
 mod test {
-    use {Workspace, Rect, ViewHandle, Direction};
+    use {Split, Workspace, Rect, ViewHandle, Direction};
 
     fn check_range(inv: f32, value: f32, delta: f32) -> bool {
         (inv - value).abs() < delta
@@ -322,7 +324,7 @@ mod test {
 
     #[test]
     fn test_calc_rect_horz_half() {
-        let rects = Workspace::calc_horizontal_sizing(Rect::new(0.0, 0.0, 1024.0, 1024.0), 0.5);
+        let rects = Split::calc_horizontal_sizing(Rect::new(0.0, 0.0, 1024.0, 1024.0), 0.5);
 
         assert_eq!(check_range(rects.0.x, 0.0, 0.001), true);
         assert_eq!(check_range(rects.0.y, 0.0, 0.001), true);
@@ -337,7 +339,7 @@ mod test {
 
     #[test]
     fn test_calc_rect_horz_25_per() {
-        let rects = Workspace::calc_horizontal_sizing(Rect::new(0.0, 0.0, 1024.0, 1024.0), 0.25);
+        let rects = Split::calc_horizontal_sizing(Rect::new(0.0, 0.0, 1024.0, 1024.0), 0.25);
 
         assert_eq!(check_range(rects.0.x, 0.0, 0.001), true);
         assert_eq!(check_range(rects.0.y, 0.0, 0.001), true);
@@ -352,7 +354,7 @@ mod test {
 
     #[test]
     fn test_calc_rect_horz_25_per_2() {
-        let rects = Workspace::calc_horizontal_sizing(Rect::new(16.0, 32.0, 512.0, 1024.0), 0.25);
+        let rects = Split::calc_horizontal_sizing(Rect::new(16.0, 32.0, 512.0, 1024.0), 0.25);
 
         assert_eq!(check_range(rects.0.x, 16.0, 0.001), true);
         assert_eq!(check_range(rects.0.y, 32.0, 0.001), true);
