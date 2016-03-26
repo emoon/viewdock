@@ -351,7 +351,7 @@ mod test {
         assert_eq!(check_range(rects.0.width, 512.0, 0.001), true);
         assert_eq!(check_range(rects.0.height, 256.0, 0.001), true);
 
-        assert_eq!(check_range(rects.1.x, 32.0, 0.001), true);
+        assert_eq!(check_range(rects.1.x, 16.0, 0.001), true);
         assert_eq!(check_range(rects.1.y, 288.0, 0.001), true);
         assert_eq!(check_range(rects.1.width, 512.0, 0.001), true);
         assert_eq!(check_range(rects.1.height, 768.0, 0.001), true);
