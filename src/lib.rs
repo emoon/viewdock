@@ -6,6 +6,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Clone, Copy)]
 pub struct ViewHandle(pub u64);
 
+#[derive(Clone, Copy)]
+pub struct SplitHandle(pub u64);
+
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Rect {
     pub x: f32,
@@ -76,10 +79,12 @@ pub struct Split {
     pub ratio: f32,
     /// Direction of the split
     pub direction: Direction,
+    /// Handle of the spliter
+    pub handle: SplitHandle,
 }
 
 impl Split {
-    pub fn new(direction: Direction) -> Split {
+    pub fn new(direction: Direction, handle: SplitHandle) -> Split {
         Split {
             left: None,
             right: None,
@@ -87,6 +92,7 @@ impl Split {
             right_views: Container::new(),
             ratio: 0.0,
             direction: direction,
+            handle: handle,
         }
     }
 
@@ -108,11 +114,11 @@ impl Split {
         false
     }
 
-    pub fn split_left(&mut self, view_handle: ViewHandle, direction: Direction) {
+    pub fn split_left(&mut self, split_handle: SplitHandle, view_handle: ViewHandle, direction: Direction) {
         if Self::no_split(self, direction, view_handle) { 
             return; 
         } else {
-            let mut split = Box::new(Split::new(direction));
+            let mut split = Box::new(Split::new(direction, split_handle));
             split.right_views = self.left_views.clone();
             split.left_views.views.push(View::new(view_handle));
             split.ratio = 0.5;
@@ -121,11 +127,11 @@ impl Split {
         }
     }
 
-    pub fn split_right(&mut self, view_handle: ViewHandle, direction: Direction) {
+    pub fn split_right(&mut self, split_handle: SplitHandle, view_handle: ViewHandle, direction: Direction) {
         if Self::no_split(self, direction, view_handle) { 
             return; 
         } else {
-            let mut split = Box::new(Split::new(direction));
+            let mut split = Box::new(Split::new(direction, split_handle));
             split.left_views = self.right_views.clone();
             split.right_views.views.push(View::new(view_handle));
             split.ratio = 0.5;
@@ -187,31 +193,31 @@ impl Split {
         }
     }
 
-    pub fn split_by_view_handle(&mut self, direction: Direction, find_handle: ViewHandle, handle: ViewHandle) {
+    pub fn split_by_view_handle(&mut self, direction: Direction, split_handle: SplitHandle, find_handle: ViewHandle, handle: ViewHandle) {
         // TODO: Fix me
         let left_views = self.left_views.views.clone();
         let right_views = self.right_views.views.clone();
 
         for view in left_views {
             if view.handle.0 == find_handle.0 {
-                self.split_left(handle, direction);
+                self.split_left(split_handle, handle, direction);
                 return;
             }
         }
 
         for view in right_views {
             if view.handle.0 == find_handle.0 {
-                self.split_right(handle, direction);
+                self.split_right(split_handle, handle, direction);
                 return;
             }
         }
 
         if let Some(ref mut split) = self.left {
-            Self::split_by_view_handle(split, direction, find_handle, handle); 
+            Self::split_by_view_handle(split, direction, split_handle, find_handle, handle); 
         }
 
         if let Some(ref mut split) = self.right {
-            Self::split_by_view_handle(split, direction, find_handle, handle); 
+            Self::split_by_view_handle(split, direction, split_handle, find_handle, handle); 
         }
     }
 
@@ -244,24 +250,55 @@ impl Split {
         }
     }
 
-    pub fn is_hovering_sizer(&self, pos: (f32, f32)) -> bool {
+    pub fn is_hovering_sizer(&self, pos: (f32, f32)) -> Option<SplitHandle> {
         if Self::is_hovering_rect(pos, 8.0, self.left_views.rect, self.direction) {
-            return true;
+            return Some(self.handle) 
         }
 
         if let Some(ref split) = self.left {
-            if Self::is_hovering_sizer(split, pos) {
-                return true;
+            if let Some(handle) = Self::is_hovering_sizer(split, pos) {
+                return Some(handle);
             }
         }
 
         if let Some(ref split) = self.right {
-            if Self::is_hovering_sizer(split, pos) {
-                return true;
+            if let Some(handle) = Self::is_hovering_sizer(split, pos) {
+                return Some(handle);
             }
         }
 
-        false
+        None
+    }
+
+    fn change_ratio(&mut self, ratio: f32) {
+        self.ratio += ratio * -0.005;
+
+        if self.ratio < 0.05 {
+            self.ratio = 0.05;
+        }
+
+        if self.ratio > 0.95 {
+            self.ratio = 0.95;
+        }
+    }
+
+    pub fn drag_sizer(&mut self, handle: SplitHandle, delta: (f32, f32)) {
+        println!("{} - {} / {} {}", self.handle.0, handle.0, delta.0, delta.1);
+        if self.handle.0 == handle.0 {
+            match self.direction {
+                Direction::Vertical => Self::change_ratio(self, delta.0),
+                Direction::Horizontal => Self::change_ratio(self, delta.1),
+                _ => (),
+            }
+        }
+
+        if let Some(ref mut split) = self.left {
+            Self::drag_sizer(split, handle, delta); 
+        }
+
+        if let Some(ref mut split) = self.right {
+            Self::drag_sizer(split, handle, delta); 
+        }
     }
 }
 
@@ -270,6 +307,7 @@ pub struct Workspace {
     pub rect: Rect,
     /// border size of the windows (in pixels)
     pub window_border: f32,
+    handle_counter: SplitHandle,
 }
 
 impl Workspace {
@@ -295,23 +333,26 @@ impl Workspace {
             split: None,
             rect: rect, 
             window_border: 4.0,
+            handle_counter: SplitHandle(1),
         })
     }
 
     /// This code gets called when the top split is None. This mean that the view will be
     /// set to fullscreen as there are no other splits to be done
-    fn split_new(&mut self, view_handle: ViewHandle) {
-        let mut split = Box::new(Split::new(Direction::Full));
+    fn split_new(&mut self, split_handle: SplitHandle, view_handle: ViewHandle) {
+        let mut split = Box::new(Split::new(Direction::Full, split_handle));
         split.ratio = 1.0;
         split.left_views.views.push(View::new(view_handle));
         self.split = Some(split);
     }
 
     pub fn split_top(&mut self, view_handle: ViewHandle, direction: Direction) {
+        self.handle_counter.0 += 1;
+        let split_handle = self.handle_counter;
         if let Some(ref mut split) = self.split {
-            split.split_left(view_handle, direction);
+            split.split_left(split_handle, view_handle, direction);
         } else {
-            Self::split_new(self, view_handle);
+            Self::split_new(self, split_handle, view_handle);
         }
     }
 
@@ -324,15 +365,22 @@ impl Workspace {
 
     pub fn split_by_view_handle(&mut self, direction: Direction, find_handle: ViewHandle, handle: ViewHandle) {
         if let Some(ref mut split) = self.split {
-            split.split_by_view_handle(direction, find_handle, handle);
+            self.handle_counter.0 += 1;
+            split.split_by_view_handle(direction, self.handle_counter, find_handle, handle);
         }
     }
 
-    pub fn is_hovering_sizer(&self, pos: (f32, f32)) -> bool {
+    pub fn is_hovering_sizer(&self, pos: (f32, f32)) -> Option<SplitHandle> {
         if let Some(ref split) = self.split {
             split.is_hovering_sizer(pos)
         } else {
-            false
+            None
+        }
+    }
+
+    pub fn drag_sizer(&mut self, handle: SplitHandle, delta: (f32, f32)) {
+        if let Some(ref mut split) = self.split {
+            split.drag_sizer(handle, delta)
         }
     }
 }

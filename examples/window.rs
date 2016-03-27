@@ -1,8 +1,8 @@
 extern crate minifb;
 extern crate viewdock;
 
-use minifb::{Key, WindowOptions, MouseMode};
-use viewdock::{Workspace, Split, Rect, ViewHandle, Direction};
+use minifb::{Key, WindowOptions, MouseMode, MouseButton};
+use viewdock::{Workspace, Split, Rect, ViewHandle, Direction, SplitHandle};
 
 const WIDTH: usize = 1024;
 const HEIGHT: usize = 768;
@@ -44,8 +44,16 @@ fn draw_ws(dest: &mut [u32], ws: &Workspace) {
     }
 }
 
+enum State {
+    Def,
+    DraggingSlider,
+}
+
 fn main() {
     let mut buffer: Vec<u32> = vec![0; WIDTH * HEIGHT];
+    let mut prev_mouse: (f32, f32) = (0.0, 0.0);
+    let mut state = State::Def;
+    let mut handle = SplitHandle(0);
 
     let mut ws = Workspace::new(Rect::new(0.0, 0.0, WIDTH as f32, HEIGHT as f32)).unwrap();
 
@@ -63,10 +71,46 @@ fn main() {
 
     while window.is_open() && !window.is_key_down(Key::Escape) {
 
+        ws.update();
+
         fill_rect(&mut buffer, Rect::new(0.0, 0.0, WIDTH as f32, HEIGHT as f32), 0);
         draw_ws(&mut buffer, &ws);
 
-        println!("hover {}", ws.is_hovering_sizer(window.get_mouse_pos(MouseMode::Clamp).unwrap()));
+        let mouse_pos = window.get_mouse_pos(MouseMode::Clamp).unwrap();
+
+        match state {
+            State::Def => {
+                if let Some(h) = ws.is_hovering_sizer(mouse_pos) {
+                    handle = h;
+                    if window.get_mouse_down(MouseButton::Left) {
+                        state = State::DraggingSlider;
+                    }
+                }
+            },
+
+            State::DraggingSlider => {
+                let delta = (prev_mouse.0 - mouse_pos.0, prev_mouse.1 - mouse_pos.1);
+
+                if window.get_mouse_down(MouseButton::Left) {
+                    println!("Dragging slider");
+                    ws.drag_sizer(handle, delta);
+                } else {
+                    handle = SplitHandle(0);
+                    state = State::Def;
+                }
+            }
+        }
+
+        if let Some(handle) = ws.is_hovering_sizer(mouse_pos) {
+            let delta = (prev_mouse.0 - mouse_pos.0, prev_mouse.1 - mouse_pos.1);
+
+            if window.get_mouse_down(MouseButton::Left) {
+                println!("drangging sizer");
+                ws.drag_sizer(handle, delta);
+            }
+        }
+
+        prev_mouse = mouse_pos;
 
         window.update_with_buffer(&buffer);
     }
