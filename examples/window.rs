@@ -1,7 +1,7 @@
 extern crate minifb;
 extern crate viewdock;
 
-use minifb::{Key, WindowOptions};
+use minifb::{Key, WindowOptions, MouseMode};
 use viewdock::{Workspace, Split, Rect, ViewHandle, Direction};
 
 const WIDTH: usize = 1024;
@@ -65,6 +65,8 @@ fn main() {
 
         fill_rect(&mut buffer, Rect::new(0.0, 0.0, WIDTH as f32, HEIGHT as f32), 0);
         draw_ws(&mut buffer, &ws);
+
+        println!("hover {}", ws.is_hovering_sizer(window.get_mouse_pos(MouseMode::Clamp).unwrap()));
 
         window.update_with_buffer(&buffer);
     }

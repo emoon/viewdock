@@ -6,7 +6,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Clone, Copy)]
 pub struct ViewHandle(pub u64);
 
-#[derive(Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy)]
 pub struct Rect {
     pub x: f32,
     pub y: f32,
@@ -50,6 +50,17 @@ pub enum Direction {
 #[derive(Clone)]
 pub struct Container {
     pub views: Vec<View>,
+    pub rect: Rect,
+}
+
+impl Container {
+    pub fn new() -> Container {
+        Container {
+            views: Vec::new(),
+            rect: Rect::default(),
+        }
+    }
+
 }
 
 pub struct Split {
@@ -72,8 +83,8 @@ impl Split {
         Split {
             left: None,
             right: None,
-            left_views: Container { views: Vec::new() },
-            right_views: Container { views: Vec::new() },
+            left_views: Container::new(),
+            right_views: Container::new(),
             ratio: 0.0,
             direction: direction,
         }
@@ -114,7 +125,6 @@ impl Split {
         if Self::no_split(self, direction, view_handle) { 
             return; 
         } else {
-            println!("Create new split");
             let mut split = Box::new(Split::new(direction));
             split.left_views = self.right_views.clone();
             split.right_views.views.push(View::new(view_handle));
@@ -142,12 +152,16 @@ impl Split {
         (rect_left, rect_right)
     }
 
-    fn recursive_update(&mut self, rect: Rect, level: usize) {
-        let rects = match self.direction {
-            Direction::Vertical => Self::calc_vertical_sizing(rect, self.ratio),
-            Direction::Horizontal => Self::calc_horizontal_sizing(rect, self.ratio),
+    fn calc_rects(direction: Direction, rect: Rect, ratio: f32) -> (Rect, Rect) {
+        match direction {
+            Direction::Vertical => Self::calc_vertical_sizing(rect, ratio),
+            Direction::Horizontal => Self::calc_horizontal_sizing(rect, ratio),
             Direction::Full => (rect, rect),
-        };
+        }
+    }
+
+    fn recursive_update(&mut self, rect: Rect, level: usize) {
+        let rects = Self::calc_rects(self.direction, rect, self.ratio);
 
         if let Some(ref mut split) = self.left {
             Self::recursive_update(split, rects.0, level + 1);
@@ -156,6 +170,11 @@ impl Split {
         if let Some(ref mut split) = self.right {
             Self::recursive_update(split, rects.1, level + 1);
         }
+
+        self.left_views.rect = rects.0;
+        self.right_views.rect = rects.1;
+
+        // TODO: Remove these loops, should be propagated to update call only
 
         for view in &mut self.left_views.views {
             //println!("level {} left  - x: {} y: {} w: {} h: {}", level, rects.0.x, rects.0.y, rects.0.width, rects.0.height);
@@ -196,6 +215,54 @@ impl Split {
         }
     }
 
+    fn is_inside(v: (f32, f32), rect: Rect) -> bool {
+        let x0 = rect.x;
+        let y0 = rect.y;
+        let x1 = x0 + rect.width;
+        let y1 = y0 + rect.height;
+
+        if (v.0 >= x0 && v.0 < x1) && (v.1 >= y0 && v.1 < y1) {
+            true
+        } else {
+            false
+        }
+    }
+
+    fn get_sizer_from_rect_horizontal(rect: Rect, size: f32) -> Rect {
+        Rect::new(rect.x, rect.y + rect.height, rect.width, size)
+    }
+
+    fn get_sizer_from_rect_vertical(rect: Rect, size: f32) -> Rect {
+        Rect::new(rect.x + rect.width, rect.y, size, rect.height)
+    }
+
+    fn is_hovering_rect(pos: (f32, f32), border_size: f32, rect: Rect, direction: Direction) -> bool {
+        match direction {
+            Direction::Horizontal => Self::is_inside(pos, Self::get_sizer_from_rect_horizontal(rect, border_size)),
+            Direction::Vertical => Self::is_inside(pos, Self::get_sizer_from_rect_vertical(rect, border_size)),
+            Direction::Full => false, 
+        }
+    }
+
+    pub fn is_hovering_sizer(&self, pos: (f32, f32)) -> bool {
+        if Self::is_hovering_rect(pos, 8.0, self.left_views.rect, self.direction) {
+            return true;
+        }
+
+        if let Some(ref split) = self.left {
+            if Self::is_hovering_sizer(split, pos) {
+                return true;
+            }
+        }
+
+        if let Some(ref split) = self.right {
+            if Self::is_hovering_sizer(split, pos) {
+                return true;
+            }
+        }
+
+        false
+    }
 }
 
 pub struct Workspace {
@@ -258,6 +325,14 @@ impl Workspace {
     pub fn split_by_view_handle(&mut self, direction: Direction, find_handle: ViewHandle, handle: ViewHandle) {
         if let Some(ref mut split) = self.split {
             split.split_by_view_handle(direction, find_handle, handle);
+        }
+    }
+
+    pub fn is_hovering_sizer(&self, pos: (f32, f32)) -> bool {
+        if let Some(ref split) = self.split {
+            split.is_hovering_sizer(pos)
+        } else {
+            false
         }
     }
 }
@@ -373,5 +448,39 @@ mod test {
         assert_eq!(check_range(rects.1.y, 288.0, 0.001), true);
         assert_eq!(check_range(rects.1.width, 512.0, 0.001), true);
         assert_eq!(check_range(rects.1.height, 768.0, 0.001), true);
+    }
+
+    #[test]
+    fn test_gen_horizontal_size() {
+        let border_size = 4.0;
+        let rect_in = Rect::new(10.0, 20.0, 30.0, 40.0);
+        let rect = Split::get_sizer_from_rect_horizontal(rect_in, border_size);
+
+        assert_eq!(check_range(rect.x, rect_in.x, 0.001), true);
+        assert_eq!(check_range(rect.y, 60.0, 0.001), true);
+        assert_eq!(check_range(rect.width, rect_in.width, 0.001), true);
+        assert_eq!(check_range(rect.height, border_size, 0.001), true);
+    }
+
+    #[test]
+    fn test_gen_vertical_size() {
+        let border_size = 4.0;
+        let rect_in = Rect::new(10.0, 20.0, 30.0, 40.0);
+        let rect = Split::get_sizer_from_rect_vertical(rect_in, border_size);
+
+        assert_eq!(check_range(rect.x, 40.0, 0.001), true);
+        assert_eq!(check_range(rect.y, rect_in.y, 0.001), true);
+        assert_eq!(check_range(rect.width, border_size, 0.001), true);
+        assert_eq!(check_range(rect.height, rect_in.height, 0.001), true);
+    }
+
+    #[test]
+    fn test_inside_horizontal() {
+        let border_size = 4.0;
+        let rect = Rect::new(10.0, 20.0, 30.0, 40.0);
+        let rect_horz = Split::get_sizer_from_rect_horizontal(rect, border_size);
+
+        assert_eq!(Split::is_inside((9.0, 61.0), rect_horz), false);
+        assert_eq!(Split::is_inside((11.0, 61.0), rect_horz), true);
     }
 }
