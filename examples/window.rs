@@ -21,6 +21,9 @@ fn fill_rect(dest: &mut [u32], rect: Rect, color: u32) {
 }
 
 fn draw_recrusive(dest: &mut [u32], split: &Split) {
+
+    //println!("Ratio {}", split.ratio);
+
     for view in &split.left_views.views {
         fill_rect(dest, view.rect, view.handle.0 as u32);
     }
@@ -60,7 +63,8 @@ fn main() {
     ws.split_top(ViewHandle(0xff), Direction::Vertical);
     ws.split_top(ViewHandle(0xff00ff), Direction::Vertical);
     ws.split_by_view_handle(Direction::Vertical, ViewHandle(0xff00ff), ViewHandle(0x00ff00));
-    ws.split_by_view_handle(Direction::Horizontal, ViewHandle(0x00ff00), ViewHandle(0x5522));
+    //ws.split_by_view_handle(Direction::Vertical, ViewHandle(0x00ff00), ViewHandle(0x002255));
+    //ws.split_by_view_handle(Direction::Horizontal, ViewHandle(0x00ff00), ViewHandle(0x5522));
     ws.update();
 
     let mut window = minifb::Window::new("ViewDockTest",
@@ -73,7 +77,7 @@ fn main() {
 
         ws.update();
 
-        fill_rect(&mut buffer, Rect::new(0.0, 0.0, WIDTH as f32, HEIGHT as f32), 0);
+        //fill_rect(&mut buffer, Rect::new(0.0, 0.0, WIDTH as f32, HEIGHT as f32), 0);
         draw_ws(&mut buffer, &ws);
 
         let mouse_pos = window.get_mouse_pos(MouseMode::Clamp).unwrap();
@@ -92,7 +96,6 @@ fn main() {
                 let delta = (prev_mouse.0 - mouse_pos.0, prev_mouse.1 - mouse_pos.1);
 
                 if window.get_mouse_down(MouseButton::Left) {
-                    println!("Dragging slider");
                     ws.drag_sizer(handle, delta);
                 } else {
                     handle = SplitHandle(0);
@@ -102,10 +105,9 @@ fn main() {
         }
 
         if let Some(handle) = ws.is_hovering_sizer(mouse_pos) {
-            let delta = (prev_mouse.0 - mouse_pos.0, prev_mouse.1 - mouse_pos.1);
+            let delta = (mouse_pos.0 - prev_mouse.0, mouse_pos.1 - prev_mouse.1);
 
             if window.get_mouse_down(MouseButton::Left) {
-                println!("drangging sizer");
                 ws.drag_sizer(handle, delta);
             }
         }

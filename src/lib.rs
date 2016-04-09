@@ -81,6 +81,8 @@ pub struct Split {
     pub direction: Direction,
     /// Handle of the spliter
     pub handle: SplitHandle,
+
+    rect: Rect,
 }
 
 impl Split {
@@ -93,6 +95,7 @@ impl Split {
             ratio: 0.0,
             direction: direction,
             handle: handle,
+            rect: Rect::default(),
         }
     }
 
@@ -169,6 +172,8 @@ impl Split {
     fn recursive_update(&mut self, rect: Rect, level: usize) {
         let rects = Self::calc_rects(self.direction, rect, self.ratio);
 
+        self.rect = rect;
+
         if let Some(ref mut split) = self.left {
             Self::recursive_update(split, rects.0, level + 1);
         }
@@ -179,6 +184,9 @@ impl Split {
 
         self.left_views.rect = rects.0;
         self.right_views.rect = rects.1;
+
+        //println!("level {} left  - x: {} y: {} w: {} h: {}", level, rects.0.x, rects.0.y, rects.0.width, rects.0.height);
+        //println!("level {} right - x: {} y: {} w: {} h: {}", level, rects.1.x, rects.1.y, rects.1.width, rects.1.height);
 
         // TODO: Remove these loops, should be propagated to update call only
 
@@ -270,8 +278,18 @@ impl Split {
         None
     }
 
-    fn change_ratio(&mut self, ratio: f32) {
-        self.ratio += ratio * -0.005;
+    fn map_rect_to_delta(&self, delta: (f32, f32)) -> f32 {
+        match self.direction {
+            Direction::Vertical => -delta.0 / self.rect.width,
+            Direction::Horizontal => -delta.1 / self.rect.height,
+            _ => 0.0,
+        }
+    }
+
+    fn change_ratio(&mut self, delta: (f32, f32)) {
+        let scale = Self::map_rect_to_delta(self, delta);
+
+        self.ratio += scale;
 
         if self.ratio < 0.05 {
             self.ratio = 0.05;
@@ -283,13 +301,8 @@ impl Split {
     }
 
     pub fn drag_sizer(&mut self, handle: SplitHandle, delta: (f32, f32)) {
-        println!("{} - {} / {} {}", self.handle.0, handle.0, delta.0, delta.1);
         if self.handle.0 == handle.0 {
-            match self.direction {
-                Direction::Vertical => Self::change_ratio(self, delta.0),
-                Direction::Horizontal => Self::change_ratio(self, delta.1),
-                _ => (),
-            }
+            return Self::change_ratio(self, delta);
         }
 
         if let Some(ref mut split) = self.left {
